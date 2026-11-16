@@ -1,90 +1,86 @@
 # Ticket Tracker
 
-A support ticket tracker: Java + Spring Boot REST API, PostgreSQL, and (later) a React/TypeScript front end.
+A support ticket tracker built with Java, Spring Boot and PostgreSQL. It exposes a REST API for creating, viewing, updating and deleting tickets, with input validation and clear error responses.
 
-## Day 1: run the API
+## Tech stack
 
-### What you need installed (Windows)
+- Java 21, Spring Boot 3.5, Spring Data JPA (Hibernate)
+- PostgreSQL 16 (run in Docker)
+- Maven
 
-1. **JDK 21** - check with `java -version`. If missing: `winget install EclipseAdoptium.Temurin.21.JDK`
-2. **Maven** - check with `mvn -v`. If missing: `winget install Apache.Maven` (or just use IntelliJ, which has Maven built in)
-3. **Docker Desktop** - check with `docker --version`. If missing: `winget install Docker.DockerDesktop`, then open it once and wait until it says "Engine running"
+## API
 
-Close and reopen PowerShell after installing anything.
+| Method | Endpoint | Description | Success | Errors |
+| --- | --- | --- | --- | --- |
+| POST | `/api/tickets` | Create a ticket | 201 | 400 |
+| GET | `/api/tickets` | List tickets, newest first | 200 | |
+| GET | `/api/tickets/{id}` | Get one ticket | 200 | 404 |
+| PUT | `/api/tickets/{id}` | Update a ticket | 200 | 400, 404 |
+| DELETE | `/api/tickets/{id}` | Delete a ticket | 204 | 404 |
 
-### Step 1 - start the database
+Example request:
 
-From the project root (the folder with `docker-compose.yml`):
-
-```powershell
-docker compose up -d
-docker ps
+```json
+POST /api/tickets
+{ "title": "Printer not working", "description": "Room 204 printer shows offline" }
 ```
 
-You should see a container named `tickets-db` with status "Up".
+Validation errors return a clear 400 response:
 
-### Step 2 - start the API
-
-```powershell
-cd backend
-mvn spring-boot:run
+```json
+{ "status": 400, "error": "Validation failed", "fields": { "title": "title is required" } }
 ```
 
-The first run downloads dependencies and takes a few minutes. It is ready when you see:
+## Run it locally
 
-```
-Started TicketTrackerApplication in ... seconds
-```
+You need JDK 21, Maven and Docker Desktop.
 
-Leave this window open.
+1. Start the database from the project root:
 
-### Step 3 - create a ticket
+   ```powershell
+   docker compose up -d
+   ```
 
-Open a second PowerShell window:
+   The database listens on port 5433 so it does not clash with a PostgreSQL installed on the default port 5432.
 
-```powershell
-Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/tickets `
-  -ContentType "application/json" `
-  -Body '{"title":"Printer not working","description":"Room 204 printer shows offline"}'
-```
+2. Start the API:
 
-You should get back the ticket with `id` 1 and `status` OPEN.
+   ```powershell
+   cd backend
+   mvn spring-boot:run
+   ```
 
-### Step 4 - list tickets
+3. Try it:
 
-```powershell
-Invoke-RestMethod http://localhost:8080/api/tickets
-```
+   ```powershell
+   Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/tickets -ContentType "application/json" -Body '{"title":"Printer not working","description":"Room 204 printer shows offline"}'
+   Invoke-RestMethod http://localhost:8080/api/tickets
+   ```
 
-Or open http://localhost:8080/api/tickets in your browser.
+To stop: press `Ctrl + C` in the API window, then `docker compose down`.
 
-### Stopping
-
-- API: `Ctrl + C` in its window
-- Database: `docker compose down` (your data is kept; add `-v` to wipe it)
-
-## If something goes wrong
-
-| What you see | Likely cause |
-| --- | --- |
-| `Connection to localhost:5432 refused` | Database is not running. Run `docker compose up -d` |
-| `password authentication failed for user "tickets"` | Another PostgreSQL is already using port 5432. Stop it, or change the port to `"5433:5432"` in `docker-compose.yml` and `5433` in `application.properties` |
-| `Port 8080 was already in use` | Add `server.port=8081` to `application.properties` |
-| `release version 21 not supported` | `java -version` is showing an older JDK |
-
-## How the code is organised
+## Project structure
 
 ```
 backend/src/main/java/com/hassam/tickets/
-  TicketTrackerApplication.java   starts the app
+  TicketTrackerApplication.java    app entry point
   ticket/
-    Ticket.java                   the database table as a Java class
-    TicketStatus.java             OPEN / IN_PROGRESS / CLOSED
-    TicketRepository.java         database access (Spring writes the SQL)
-    TicketService.java            business logic
-    TicketController.java         the HTTP endpoints
-    CreateTicketRequest.java      JSON coming in
-    TicketResponse.java           JSON going out
+    TicketController.java          HTTP endpoints
+    TicketService.java             business logic
+    TicketRepository.java          database access (Spring Data JPA)
+    Ticket.java                    entity mapped to the tickets table
+    CreateTicketRequest.java       request body for create, with validation rules
+    UpdateTicketRequest.java       request body for update, with validation rules
+    TicketResponse.java            response body
+    ApiExceptionHandler.java       turns errors into clean JSON (400, 404)
 ```
 
-A request flows: Controller -> Service -> Repository -> PostgreSQL.
+A request flows Controller, then Service, then Repository, then PostgreSQL.
+
+## Planned
+
+- JWT login and protected endpoints (Spring Security)
+- Unit tests (JUnit, Mockito) and API tests
+- React and TypeScript front end
+- Dockerfile for the app and a full docker-compose setup
+- GitHub Actions pipeline that builds and runs the tests on every push
